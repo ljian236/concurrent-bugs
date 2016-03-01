@@ -1,0 +1,64 @@
+
++--------------------+
+|                    |
+| SUMMARY            |
+|                    |
++--------------------+
+
+A concurrency bug in MySQL-4.0.26
+
+This is a data race (also multi-var atomicity violation).
+
++---------------------------------------------------------+
+|                                                         |
+| DETAILS                                                 |
+|                                                         |
++---------------------------------------------------------+
+
+Some details can also be found at:
+http://bugs.mysql.com/bug.php?id=12848
+
+<<<<< Overview >>>>>
+
+This bug occurs when a thread is performing cache resizing
+while the other thread is storing sql queries into the same
+cache. The cache resizing (in function 'resize') is not
+atomic, making it possible for other threads to read an
+intermediate state, leading to a crash.
+
+<<<<< Details >>>>>
+
+Thread 1 is resizing the cache ,when it free the cache ,
+then thread 2 read an intermidate vaule of "query_cache_size=arg"
+,so thread 2 try to write data to the cache ,which will lead to crash;
+----------
+
+<<<<< Buggy Interleaving >>>>>
+
+Thread 1                                Thread 2
+
+ulong resize(ulong arg)                 void store_query(...)
+{                                       {
+  ...
+  free_cache(0) { 
+    ...
+    lock(&guard_mutex);
+    ...
+    query_cache_size = 0;
+    ...
+    unlock(&guard_mutex);
+    ...
+  }
+  query_cache_size = arg;
+
+                                          lock(&guard_mutex);
+                                          ...
+                                          if (query_cache_size == 0) {}
+                                          ...
+                                          write_block_data(...);
+                                          ...
+                                          unlock(&guard_mutex);
+
+  query_cache_size= init_cache();
+}                                       }
+

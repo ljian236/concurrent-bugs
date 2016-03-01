@@ -1,0 +1,47 @@
+
+Acknowledge: Shan Lu (shanlu@cs.wisc.edu)
+
+
++--------------------+
+|                    |
+| SUMMARY            |
+|                    |
++--------------------+
+A concurrency bug in Apache-2.0.48
+
+This is a data race and also an atomicity violation bug.
+
++---------------------------------------------------------+
+|                                                         |
+| DETAILS                                                 |
+|                                                         |
++---------------------------------------------------------+
+
+Some details can also be found at:
+http://issues.apache.org/bugzilla/show_bug.cgi?id=21287
+
+
+
+ This is a typicalatomicity violation bug (single-variable).
+ when obj->refcount=1,apr_atomic_dec(),decrease the refcount and return 0;
+ then cleanup_cache_object will release the obj twice;
+
+The buggy interleaving is as follows:
+
+Thread 1                           Thread 2
+
+decremetn_refcount(...)            decrement_refcount(...)
+{                                  {
+  apr_atomic_dec(&obj->refcount);
+  
+                                     apr_atomic_dec(&obj->refcount);
+                                     if (!obj->refcount) {
+                                       cleanup_cache_object(obj);
+                                     }
+
+  if (!obj->refcount) {
+    cleanup_cache_object(obj);
+  }
+}                                  }
+
+

@@ -1,0 +1,60 @@
+
++--------------------+
+|                    |
+| SUMMARY            |
+|                    |
++--------------------+
+
+
+An order violation concurrency bug in pbzip2-0.9.4.
+
++---------------------------------------------------------+
+|                                                         |
+| DETAILS                                                 |
+|                                                         |
++---------------------------------------------------------+
+
+
+The main() will free fifo->mut in queueDelete() function
+(line 1912). However, the consumer threads might still need
+fifo->mut (line 897). Therefore, a segmentation fault will
+be thrown.
+
+The buggy interleaving is like the following:
+
+Thread 1                                  Thread 2
+
+void main(...) {                          void *consumer(void *q) {
+  ...                                       ...
+  for (i=0; i < numCPU; i++) {              for (;;) {
+    ret = pthread_create(&con, NULL,          pthread_mutex_lock(fifo->mut);
+              consumer, fifo);                while (fifo->empty) {
+    ...                                         if (allDone == 1)
+  }
+  ret = pthread_create(&output, NULL,
+            fileWriter, OutFilename);
+  ...
+  // start reading in data
+  producer(..., fifo);
+  ...
+  // wait until exit of thread
+  pthread_join(output, NULL);
+  ...
+  fifo->empty = 1;
+  ...
+  // reclaim memory
+  queueDelete(fifo);
+  fifo = NULL;
+
+                                                  pthread_mutex_unlock(fifo->mut);
+                                                  return NULL;
+                                                }
+                                                ...
+                                              }
+                                              ...
+                                            }
+                                            ...
+}                                         }
+
+---------------------
+

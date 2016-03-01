@@ -1,0 +1,68 @@
+
++--------------------+
+|                    |
+| SUMMARY            |
+|                    |
++--------------------+
+
+
+A concurrency bug in MySQL-5.0.11-beta
+
+This is an atomicity violation bug (data race free).
+
++---------------------------------------------------------+
+|                                                         |
+| DETAILS                                                 |
+|                                                         |
++---------------------------------------------------------+
+
+Some details can also be found at:
+http://bugs.mysql.com/bug.php?id=12228
+
+
+
+While one thread is calling a stored procedure, another
+thread could drop some procedures (not necessarily to be the
+same procedure). The function 'sp_drop_procedure' will be
+called. It remove the procedure from the cache and drop it
+from the routine table. The function 'sp_cache_remove' will
+increment the global variable 'Cversion' by 1. This will
+cause all the other caches in other threads refresh their
+procedure caches, including the one that is executing a
+stored procedure, leading to a crash.
+
+----------
+
+<<<<< Buggy Interleaving >>>>>
+
+Thread 1                                 Thread 2
+
+mysql_execute_command(...)               mysql_execute_command(...)
+{                                        {
+  ...
+  sp_cache_insert(...) {
+    ...
+    lock(&Cversion_lock);
+    v = Cversion;
+    unlock(&Cversion_lock);
+    ...
+  }                                        sp_cache_remove(...) {
+                                             ...
+                                             lock(&Cversion_lock);
+  ...                                        Cversion++;
+  sp_head::execute_procedure(...) {          unlock(&Cversion_lock);
+    ...                                      ...
+    mysql_execute_command(...) {           }
+      ...
+      sp_cache_lookup(...) {
+        ...
+        lock(&Cversion_lock);
+        v = Cversion;
+        unlock(&Cversion_lock);
+        ...
+      }
+    }
+    ...    
+  }
+}                                        }
+

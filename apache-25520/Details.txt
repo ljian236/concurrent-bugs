@@ -1,0 +1,49 @@
+
+
++--------------------+
+|                    |
+| SUMMARY            |
+|                    |
++--------------------+
+
+A concurrency bug in Apache-2.0.48
+
+This is a data race and also an atomicity violation bug.
+
++---------------------------------------------------------+
+|                                                         |
+| DETAILS                                                 |
+|                                                         |
++---------------------------------------------------------+
+
+Some details can also be found at:
+https://issues.apache.org/bugzilla/show_bug.cgi?id=25520
+
+This code region includes more than one atomicity violation
+(data race) bugs. One thread's read-write sequence may
+falsely mingle with another thread's read-write sequence to
+the same shared variable, leading to program's misbehavior. 
+
+buf->outcnt is the end of the log buffer,when the fllowing interleaving
+happens,the buf->outcnt will mismatch and then lead to the buffer mess.
+The buggy interleaving could be:
+
+Thread 1                       Thread 2
+
+ap_buffered_log_writer(...)    ap_buffered_log_writer(...)
+{                              {
+  ...
+  idx = buf->outcnt;
+  s = &buf->output[idx];
+
+                                 idx = buf->outcnt;
+                                 s = &buf->outcnt[idx];
+
+                                 buf->outcnt += len;
+
+  buf->outcnt += len;
+
+}                              }
+
+
+

@@ -1,0 +1,41 @@
+
++--------------------+
+|                    |
+| SUMMARY            |
+|                    |
++--------------------+
+
+A concurrency bug in MySQL-4.0.12
+
+This is a data race and atomicity violation bug.
+
++---------------------------------------------------------+
+|                                                         |
+| DETAILS                                                 |
+|                                                         |
++---------------------------------------------------------+
+
+Some details can also be found at
+http://bugs.mysql.com/bug.php?id=791
+
+
+
+The buggy interleaving is as follows:
+
+Thread 1                      Thread 2
+
+MYSQL_LOG::new_file(...) {    int mysql_insert(...) {
+  ...
+  log_type = LOG_CLOSED;
+
+                                if (log_type != LOG_CLOSED) {
+                                  ...
+                                  // log into bin log file
+                                  mysql_bin_log.write(...);
+                                }
+  
+  log_type = save_log_type;
+}                             }
+
+Thread 2 read an intermediate value of log_type,
+then missed to log the insert action,leads to security problem;

@@ -1,0 +1,48 @@
+
+
++--------------------+
+|                    |
+| SUMMARY            |
+|                    |
++--------------------+
+
+A concurrency bug in HTTrack-3.43.9
+
+This is a an order violation concurrency bug.
+
++---------------------------------------------------------+
+|                                                         |
+| DETAILS                                                 |
+|                                                         |
++---------------------------------------------------------+
+
+HTTrack is a offline browser utility. It allows you to 
+download a World Wide Web site from the Internet to a
+local directory.
+
+when hts_cancel_file_push() in thread 2 execute before hts_create_opt()
+in thread 1(though the case is rare),it may lead to a 
+null-pointer dereference, crashing the program
+
+The buggy interleaving could be:
+
+Thread 1                       Thread 2
+                              
+void                          
+back_launch_cmd(...)                 hts_cancel_file_push(...)
+{                                    {
+  ...                                  ...
+  hts_init();                       
+                                    
+                                    
+                                       lock(&opt->state);
+                                       ret = hts_cancel_file_push_(opt);
+                                       unlock(&opt->state);
+                              
+                              
+global_opt=opt= hts_create_opt();       
+                              
+}                                   }
+
+
+

@@ -1,0 +1,79 @@
+
++--------------------+
+|                    |
+| SUMMARY            |
+|                    |
++--------------------+
+A concurrency bug in Apache-2.2.9
+
+This is a multi-variable atomicity violation bug. (also data
+race but intentional)
+
++---------------------------------------------------------+
+|                                                         |
+| DETAILS                                                 |
+|                                                         |
++---------------------------------------------------------+
+
+Some details can also be found at:
+http://issues.apache.org/bugzilla/show_bug.cgi?id=45605
+
+<<<<< Overview >>>>>
+
+Now, consider the following situation:
+
+Initially, the listener thread just accepted a connection
+and set idler to 0.
+
+1. A worker thread finishes its execution, call function
+'ap_queue_info_set_idle', setting idlers from 0 to 1. (do
+not perform the cond_signal yet)
+
+2. The listener thread sees that the idlers is 1, so
+decreases it to 0, get another connection, and then wait for
+idle worker threads in 'ap_queue_info_wait_for_idler'.
+
+3. The worker thread resumes its execution and does a
+conditional signal.
+
+4. The listener thread is waked up by the cond_signal and
+set idlers to -1.
+
+An underflow happens. It will finally crash the server
+(or causing assertion failure).
+<<<<< Buggy Interleaving >>>>>
+
+Initial: queue_info->idler == 0;
+
+Listener Thread                       Worker Thread
+
+listener_thread(...)                  ap_queue_info_set_idle(...)
+{                                     {
+                                        ...
+                                        prev_idlers = queue_info->idlers;
+                                        queue_info->idlers++;
+                                        ...
+
+  if (queue_info->idlers == 0) {}
+  ...
+  queue_info->idlers--;
+  ...
+  if (queue_info->idlers == 0) {
+    lock(idlers_mutex);
+    ...
+    if (queue_info->idlers == 0) {
+      cond_wait(wait_for_idler);
+
+                                        lock(idlers_mutex);
+                                        cond_signal(wait_for_idler);
+                                        unlock(idlers_mutex);
+
+            
+    }
+    unlock(idlers_mutex);
+  }
+
+  queue_info->idlers--;
+  ...
+}                                     }
+
